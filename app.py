@@ -1,53 +1,46 @@
 import streamlit as st
-import pandas as pd
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
+import requests
 
-# Function to create Google Sheets service
-def get_google_sheets_service():
-    credentials = service_account.Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
-    )
-    return build('sheets', 'v4', credentials=credentials)
+# Spotify API credentials (replace with your own credentials)
+CLIENT_ID = 'b9c2df50c0df4676bb9c8525d8dc586b'
+CLIENT_SECRET = 'd859816a46bb412eafd716d9056629bd'
 
-# Function to create Google Docs service
-def get_google_docs_service():
-    credentials = service_account.Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=["https://www.googleapis.com/auth/documents.readonly"]
-    )
-    return build('docs', 'v1', credentials=credentials)
+# Authenticate with Spotify API
+client_credentials_manager = SpotifyClientCredentials(client_id=CLIENT_ID, client_secret=CLIENT_SECRET)
+sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
 
-# Streamlit App Title
-st.title("Master Library Sheet and Document Viewer:Suvichaar")
+# Streamlit app
+st.title("Spotify Track Search")
 
-# Google Sheets Section
-st.header("Google Sheets Data")
-# Add your Google Sheets ID and range
-sheet_id = "1Fg4dplOnUFBX-L4i-mFaik75qjxdF6gO46irKm3qm3A"
-range_name = "Sheet1!A1:D100"
-sheets_service = get_google_sheets_service()
-sheet = sheets_service.spreadsheets().values().get(spreadsheetId=sheet_id, range=range_name).execute()
-values = sheet.get("values", [])
-# Create a DataFrame from the sheet data and display it
-df = pd.DataFrame(values[1:], columns=values[0]) if values else pd.DataFrame()
-st.dataframe(df)
+# Input for track URL
+track_url = st.text_input("Enter Spotify Track URL", "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC")
 
-# Google Docs Section
-st.header("Google Docs Data")
-# Add your Google Docs ID
-doc_id = "1b-dHM3HIjgTcYPcu1lbikGNHkU3AdWbO72V2B1i7sfc"
-docs_service = get_google_docs_service()
-doc = docs_service.documents().get(documentId=doc_id).execute()
+if track_url:
+    try:
+        track_id = track_url.split("/")[-1]
+        track_info = sp.track(track_id)
+        st.subheader("Track Information")
+        st.write(f"**Track Name:** {track_info['name']}")
+        st.write(f"**Artist:** {', '.join(artist['name'] for artist in track_info['artists'])}")
+        st.write(f"**Album:** {track_info['album']['name']}")
+        st.write(f"**Release Date:** {track_info['album']['release_date']}")
+        st.write(f"**Track URL:** [Click here]({track_url})")
+    except Exception as e:
+        st.error("Failed to retrieve track info. Please check the URL.")
+        st.error(str(e))
 
-# Extract and format document content
-content = ""
-for elem in doc.get("body").get("content", []):
-    if "paragraph" in elem:
-        for para_elem in elem["paragraph"]["elements"]:
-            if "textRun" in para_elem and "content" in para_elem["textRun"]:
-                content += para_elem["textRun"]["content"]
-
-# Display document content in a text area
-st.text_area("Document Content", content.strip(), height=400)
+# Search functionality with query parameter
+query = st.text_input("Search for Tracks", "")
+if query:
+    results = sp.search(q=query, limit=5, type="track")
+    if results["tracks"]["items"]:
+        st.subheader("Search Results")
+        for idx, track in enumerate(results["tracks"]["items"]):
+            st.write(f"{idx + 1}. **{track['name']}** by {', '.join(artist['name'] for artist in track['artists'])}")
+            st.write(f"Album: {track['album']['name']} | Release Date: {track['album']['release_date']}")
+            st.write(f"[Listen Here]({track['external_urls']['spotify']})")
+    else:
+        st.write("No results found.")
+        
